@@ -1,83 +1,38 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import Optional
-from random import randrange
-from fastapi import Response,HTTPException,status
+from multiprocessing import synchronize
+from fastapi import FastAPI,Response,HTTPException,status,Depends
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import time
+from sqlalchemy.orm import Session
+from . import models,schemas,utils
+from .database import engine,get_db
+from .routers import user,post,auth
+
+
+
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-class Post(BaseModel):
-    title: str
-    content: str
-    published: bool = True #default value is true, if user left empty
-    rating: Optional[int] = None
+while True:
+    try:
+        conn = psycopg2.connect(host='localhost',database='Social-App',user='postgres',password='Subh@m14308',cursor_factory=RealDictCursor)
+        cursor = conn.cursor()
+        print("Database connection was successful")
+        break
 
-my_posts = [
-    {"title":"test 1","content":"test 1 content","id":1},
-    {"title":"Top Indian Foods","content":"Biryani, Chole Bhature, Pani Puri","id":2},
-    ]
+    except Exception as error:
+        print("Error connecting to the database")
+        print("Error: ",error)
+        time.sleep(2)
 
-def find_post(id):
-    for p in my_posts:
-        if p['id'] == id:
-            return p
-
-def find_index_post(id):
-    for i,p in enumerate(my_posts):
-        if p['id'] == id:
-            return i
+app.include_router(post.router)
+app.include_router(user.router)
+app.include_router(auth.router)
 
 @app.get("/")
 def root():
     return {"message":"Welcome to my Social App"}
 
-@app.get("/posts")
-def get_posts():
-    return {"data": my_posts}
 
-@app.post("/posts",status_code=status.HTTP_201_CREATED)
-def create_posts(post:Post):
-    post_dict=post.dict()
-    post_dict['id']=randrange(0,1000000)
-    my_posts.append(post_dict)
-    return {
-        "data": post_dict
-        }
 
-@app.get("/posts/{id}")
-def get_post(id : int,response : Response):
-    post=find_post(id)
-    if not post :
-        #response.status_code=status.HTTP_404_NOT_FOUND
-        raise HTTPException(
-            status_code=404, 
-            detail=f"post with id {id} was not found"
-            )
-    return {
-        "post_detail":post, 
-    }
-
-@app.delete("/posts/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(id : int):
-    #find index in the array
-    index=find_index_post(id)
-    if index == None:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"post with id {id} was not found"
-            )
-    my_posts.pop(index)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-@app.put("/posts/{id}")
-def update_post(id : int, post:Post):
-    index=find_index_post(id)
-    if index == None:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"post with id {id} was not found"
-            )
-    post_dict=post.dict()
-    post_dict['id']=id
-    my_posts[index]=post_dict
-    return {"data": post_dict}
